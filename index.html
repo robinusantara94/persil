@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebGIS - Integrated Bhumi ATR/BPN Public Services</title>
+    <title>WebGIS - Integrated ATR/BPN Services</title>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
@@ -23,14 +23,14 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* Control Panel Floating Box */
+        /* Panel Informasi Status */
         .info-panel {
             position: absolute;
             top: 20px;
             left: 60px;
             z-index: 1000;
             background: rgba(255, 255, 255, 0.95);
-            padding: 15px;
+            padding: 12px 16px;
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
             max-width: 320px;
@@ -40,21 +40,21 @@
         .info-panel h3 {
             margin-bottom: 6px;
             color: #1a2a3a;
-            font-size: 15px;
+            font-size: 14px;
         }
 
         .info-panel p {
             font-size: 12px;
             color: #555;
             line-height: 1.4;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .status-badge {
             display: inline-block;
             background-color: #e3f2fd;
             color: #0d47a1;
-            padding: 4px 8px;
+            padding: 3px 8px;
             border-radius: 4px;
             font-size: 11px;
             font-weight: bold;
@@ -70,18 +70,25 @@
             font-size: 11px;
             border: 1px solid #ffeeba;
         }
+
+        /* Custom Layer Control Styling */
+        .leaflet-control-layers {
+            border-radius: 8px !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+            padding: 10px 14px !important;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Panel Informasi Status Endpoint -->
+    <!-- Floating Info Panel -->
     <div class="info-panel">
         <h3>Service Peta Bhumi ATR/BPN</h3>
-        <p>Endpoint: <code>bhumi.atrbpn.go.id/geoserver</code></p>
-        <span class="status-badge" id="zoomStatus">Tingkat Zoom: 17 (Aktif)</span>
+        <p>Layer WMS & Tile Service Peta Dasar BPN</p>
+        <span class="status-badge" id="zoomStatus">Tingkat Zoom: 18</span>
         
         <div class="zoom-warning" id="zoomWarning">
-            ⚠️ <b>Zoom Kurang Dekat:</b> Dekatkan peta hingga zoom 17+ agar layer persil dirender oleh server Bhumi.
+            ⚠️ <b>Zoom Kurang Dekat:</b> Dekatkan peta hingga zoom 17+ agar layer WMS persil dirender oleh server Bhumi.
         </div>
     </div>
 
@@ -94,88 +101,102 @@
             crossorigin=""></script>
 
     <script>
-        // 1. Inisialisasi Peta (Default Zoom diatur langsung ke 17 agar persil langsung muncul)
-        const map = L.map('map', {
-            center: [-0.3421, 111.6982], // Koordinat awal
-            zoom: 17,                     // Zoom minimum agar persil pasif dirender
-            maxZoom: 21
-        });
+        document.addEventListener('DOMContentLoaded', function() {
 
-        // 2. Basemap Peta Dasar
-        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 20,
-            attribution: '© OpenStreetMap contributors'
-        });
+            // 1. Definisikan Base Maps (Peta Dasar)
+            const esriSatelit = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 20,
+                attribution: '© Esri Satellite'
+            });
 
-        const esriSatelit = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 20,
-            attribution: '© Esri Satellite'
-        });
+            const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 20,
+                attribution: '© OpenStreetMap'
+            });
 
-        // Tampilkan Satelit sebagai peta dasar awal
-        esriSatelit.addTo(map);
+            // 2. Definisikan Service Tile Peta Dasar BPN (Direct Tile Server)
+            const tileDasarBPN = L.tileLayer('https://petadasar.atrbpn.go.id/main/wms/{x}/{y}/{z}', {
+                maxZoom: 20,
+                minZoom: 3,
+                crossOrigin: true,
+                attribution: '© Peta Dasar ATR/BPN'
+            });
 
-        // 3. Panggilan Endpoint Publik GeoServer Bhumi ATR/BPN via Proxy CORS
-        const bhumiEndpoint = 'https://bhumi.atrbpn.go.id/geoserver/ows';
-        const bhumiProxiedUrl = 'https://corsproxy.io/?' + encodeURIComponent(bhumiEndpoint);
+            // 3. Definisikan Service WMS Bhumi ATR/BPN (via Proxy)
+            const bhumiProxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://bhumi.atrbpn.go.id/geoserver/ows');
 
-        // Layer WMS Persil Pasif
-        const persilPasifWMS = L.tileLayer.wms(bhumiProxiedUrl, {
-            layers: 'atrbpn:persilpasif',
-            format: 'image/png',
-            transparent: true,
-            version: '1.3.0',
-            maxZoom: 21,
-            tileSize: 512,
-            zoomOffset: -1,
-            attribution: '© Kementerian ATR/BPN (Portal Bhumi)'
-        });
+            const persilPasifWMS = L.tileLayer.wms(bhumiProxyUrl, {
+                layers: 'atrbpn:persilpasif',
+                format: 'image/png',
+                transparent: true,
+                version: '1.1.1',
+                crs: L.CRS.EPSG3857,
+                styles: '',
+                maxZoom: 21,
+                attribution: '© Kementerian ATR/BPN (Portal Bhumi)'
+            });
 
-        // Layer WMS Peta Bidang Tanah (PBT) - Endpoint Tambahan Bhumi
-        const pbtWMS = L.tileLayer.wms(bhumiProxiedUrl, {
-            layers: 'atrbpn:Peta_Bidang_Tanah',
-            format: 'image/png',
-            transparent: true,
-            version: '1.3.0',
-            maxZoom: 21,
-            tileSize: 512,
-            zoomOffset: -1,
-            attribution: '© Kementerian ATR/BPN (Portal Bhumi)'
-        });
+            const pbtWMS = L.tileLayer.wms(bhumiProxyUrl, {
+                layers: 'atrbpn:Peta_Bidang_Tanah',
+                format: 'image/png',
+                transparent: true,
+                version: '1.1.1',
+                crs: L.CRS.EPSG3857,
+                styles: '',
+                maxZoom: 21,
+                attribution: '© Kementerian ATR/BPN (Portal Bhumi)'
+            });
 
-        // Tampilkan layer persil pasif secara default
-        persilPasifWMS.addTo(map);
+            // 4. Inisialisasi Peta Leaflet
+            // Default memuat Esri Satelit, Tile Dasar BPN, dan Persil Pasif
+            const map = L.map('map', {
+                center: [-0.3421, 111.6982], // Koordinat awal (Melawi/Kalbar)
+                zoom: 18,
+                maxZoom: 21,
+                layers: [esriSatelit, tileDasarBPN, persilPasifWMS]
+            });
 
-        // 4. Layer Control (Switch Basemap & Layer WMS)
-        const baseMaps = {
-            "Esri Satelit": esriSatelit,
-            "OpenStreetMap": osm
-        };
+            // 5. Pengaturan Switcher Kontrol Layer (Kanan Atas)
+            const baseMaps = {
+                "Esri Satelit": esriSatelit,
+                "OpenStreetMap": osm
+            };
 
-        const overlayMaps = {
-            "Persil Pasif ATR/BPN": persilPasifWMS,
-            "Peta Bidang Tanah (PBT)": pbtWMS
-        };
+            const overlayMaps = {
+                "Peta Dasar BPN (Tile)": tileDasarBPN,
+                "Persil Pasif ATR/BPN": persilPasifWMS,
+                "Peta Bidang Tanah (PBT)": pbtWMS
+            };
 
-        L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
+            L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
 
-        // 5. Monitoring Zoom Level untuk memberi edukasi pembatasan skala (Scale Limit Bhumi)
-        const zoomStatus = document.getElementById('zoomStatus');
-        const zoomWarning = document.getElementById('zoomWarning');
+            // 6. Monitoring Zoom Level untuk indikator scale limit server Bhumi
+            const zoomStatus = document.getElementById('zoomStatus');
+            const zoomWarning = document.getElementById('zoomWarning');
 
-        map.on('zoomend', function() {
-            const currentZoom = map.getZoom();
-            zoomStatus.innerText = `Tingkat Zoom: ${currentZoom}`;
+            map.on('zoomend', function() {
+                const currentZoom = map.getZoom();
+                zoomStatus.innerText = `Tingkat Zoom: ${currentZoom}`;
 
-            if (currentZoom < 17) {
-                zoomWarning.style.display = 'block';
-                zoomStatus.style.backgroundColor = '#f8d7da';
-                zoomStatus.style.color = '#721c24';
-            } else {
-                zoomWarning.style.display = 'none';
-                zoomStatus.style.backgroundColor = '#e3f2fd';
-                zoomStatus.style.color = '#0d47a1';
-            }
+                if (currentZoom < 17) {
+                    zoomWarning.style.display = 'block';
+                    zoomStatus.style.backgroundColor = '#f8d7da';
+                    zoomStatus.style.color = '#721c24';
+                } else {
+                    zoomWarning.style.display = 'none';
+                    zoomStatus.style.backgroundColor = '#e3f2fd';
+                    zoomStatus.style.color = '#0d47a1';
+                }
+            });
+
+            // 7. Penanganan Resize Window
+            window.addEventListener('resize', function() {
+                map.invalidateSize();
+            });
+
+            setTimeout(function() {
+                map.invalidateSize();
+            }, 300);
         });
     </script>
 </body>
