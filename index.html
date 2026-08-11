@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pekom WebGIS - Melawi Land Viewer</title>
+    <title>WebGIS - Persil Reader (Format JSON)</title>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -22,11 +22,11 @@
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.15);
             max-width: 320px;
-            border-left: 5px solid #2563eb;
+            border-left: 5px solid #0284c7;
         }
 
-        .info-panel h3 { margin-bottom: 4px; color: #1e293b; font-size: 14px; font-weight: 700; }
-        .info-panel p { font-size: 11.5px; color: #64748b; line-height: 1.4; margin-bottom: 8px; }
+        .info-panel h3 { margin-bottom: 4px; color: #0f172a; font-size: 14px; font-weight: 700; }
+        .info-panel p { font-size: 11.5px; color: #475569; line-height: 1.4; margin-bottom: 8px; }
 
         .upload-box {
             margin-top: 8px;
@@ -43,18 +43,18 @@
 <body>
 
     <div class="info-panel">
-        <h3>WebGIS Persil Tanah</h3>
-        <p>Integrasi Peta Dasar & Vector Persil Lokasi Nanga Pinoh / Melawi</p>
+        <h3>Viewer Persil JSON</h3>
+        <p>Membaca data atribut & koordinat dari berkas <code>persil.json</code></p>
         
         <div class="upload-box">
-            <label for="localFile">Unggah File Persil (.geojson / .json):</label>
-            <input type="file" id="localFile" accept=".geojson, .json" onchange="loadUserGeoJSON(event)">
+            <label for="localJson">Unggah File Persil Manual (.json):</label>
+            <input type="file" id="localJson" accept=".json" onchange="loadUserJson(event)">
         </div>
     </div>
 
     <div id="map"></div>
 
-    <!-- Leaflet JS & SHP Parser -->
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
     <script>
@@ -71,51 +71,84 @@
                 attribution: '© OpenStreetMap'
             });
 
-            // 2. Layer Vector Persil Lokal (Otomatis memuat file persil.geojson dari repo GitHub jika ada)
-            const persilLokalLayer = L.geoJSON(null, {
-                style: {
-                    color: '#e11d48',
-                    weight: 2,
-                    fillColor: '#fb7185',
-                    fillOpacity: 0.35
-                },
-                onEachFeature: function(feature, layer) {
-                    if (feature.properties) {
-                        let p = '<b>Detail Persil:</b><br>';
-                        for (let k in feature.properties) {
-                            p += `<b>${k}:</b> ${feature.properties[k]}<br>`;
-                        }
-                        layer.bindPopup(p);
-                    }
-                }
-            });
-
-            // 3. Tile Layer Service Peta Dasar BPN
             const tileDasarBPN = L.tileLayer('https://petadasar.atrbpn.go.id/main/wms/{x}/{y}/{z}', {
                 maxZoom: 20,
                 minZoom: 3,
                 attribution: '© Peta Dasar ATR/BPN'
             });
 
-            // 4. Inisialisasi Peta (Default Posisi Nanga Pinoh)
+            // 2. Group Layer untuk Poligon Persil JSON
+            const jsonPersilGroup = L.featureGroup();
+
+            // 3. Inisialisasi Peta (Default Posisi Nanga Pinoh / Melawi)
             const map = L.map('map', {
                 center: [-0.3421, 111.6982],
                 zoom: 18,
                 maxZoom: 21,
-                layers: [esriSatelit, persilLokalLayer]
+                layers: [esriSatelit, jsonPersilGroup]
             });
 
-            // 5. Muat Otomatis File 'persil.geojson' dari Repositori GitHub Anda (Jika Diunggah)
-            fetch('persil.geojson')
+            // 4. Parser & Rendering JSON ke Poligon Leaflet
+            function renderJsonData(jsonList) {
+                jsonPersilGroup.clearLayers();
+
+                if (!Array.isArray(jsonList)) {
+                    // Jika data JSON dibungkus objek tunggal
+                    jsonList = [jsonList];
+                }
+
+                jsonList.forEach(item => {
+                    // Ambil koordinat (Mendukung properti 'koordinat', 'geometry.coordinates', atau 'coordinates')
+                    let rawCoords = item.koordinat || (item.geometry ? item.geometry.coordinates : null) || item.coordinates;
+
+                    if (!rawCoords) return;
+
+                    // Normalisasi struktur array koordinat polygon
+                    let rings = Array.isArray(rawCoords[0][0]) ? rawCoords[0] : rawCoords;
+
+                    // Leaflet membutuhkan format [Latitude, Longitude].
+                    // Jika data sumber dalam format [Longitude, Latitude] (X, Y), balikkan posisinya:
+                    let latLngs = rings.map(pt => [pt[1], pt[0]]);
+
+                    // Buat Poligon
+                    const polygon = L.polygon(latLngs, {
+                        color: '#e11d48',
+                        weight: 2,
+                        fillColor: '#fb7185',
+                        fillOpacity: 0.35
+                    });
+
+                    // Susun Konten Popup Atribut secara Otomatis
+                    let popupContent = '<b>Detail Persil Tanah:</b><br>';
+                    for (let key in item) {
+                        if (key !== 'koordinat' && key !== 'geometry' && key !== 'coordinates') {
+                            popupContent += `<b>${key}:</b> ${item[key]}<br>`;
+                        }
+                    }
+                    polygon.bindPopup(popupContent);
+
+                    // Tambahkan ke group layer
+                    jsonPersilGroup.addLayer(polygon);
+                });
+
+                // Zoom ke cakupan semua poligon jika data ada
+                if (jsonPersilGroup.getLayers().length > 0) {
+                    map.fitBounds(jsonPersilGroup.getBounds());
+                }
+            }
+
+            // 5. Muat Otomatis Berkas 'persil.json' dari Server / Repositori GitHub
+            fetch('persil.json')
                 .then(res => {
-                    if (!res.ok) throw new Error('File persil.geojson belum diunggah ke repo');
+                    if (!res.ok) throw new Error('File persil.json tidak ditemukan');
                     return res.json();
                 })
                 .then(data => {
-                    persilLokalLayer.addData(data);
-                    map.fitBounds(persilLokalLayer.getBounds());
+                    renderJsonData(data);
                 })
-                .catch(err => console.log('Sistem siap. Silakan unggah file GeoJSON melalui panel kontrol.'));
+                .catch(err => {
+                    console.log('persil.json belum ada di server. Gunakan tombol unggah manual.');
+                });
 
             // 6. Kontrol Switcher Layer
             const baseMaps = {
@@ -124,27 +157,25 @@
             };
 
             const overlayMaps = {
-                "Persil Tanah (Vector)": persilLokalLayer,
+                "Bidang Persil (JSON)": jsonPersilGroup,
                 "Peta Dasar BPN (Tile)": tileDasarBPN
             };
 
             L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(map);
 
-            // 7. Handler Unggah GeoJSON Langsung di Browser
-            window.loadUserGeoJSON = function(e) {
+            // 7. Handler Unggah File .json Manual di Browser
+            window.loadUserJson = function(e) {
                 const file = e.target.files[0];
                 if (!file) return;
 
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     try {
-                        const geojson = JSON.parse(evt.target.result);
-                        persilLokalLayer.clearLayers();
-                        persilLokalLayer.addData(geojson);
-                        map.fitBounds(persilLokalLayer.getBounds());
-                        alert('Berhasil menampilkan bidang persil!');
+                        const parsedData = JSON.parse(evt.target.result);
+                        renderJsonData(parsedData);
+                        alert('Berhasil menampilkan bidang persil dari file JSON!');
                     } catch (err) {
-                        alert('Format file GeoJSON/JSON tidak valid!');
+                        alert('Format berkas JSON tidak valid!');
                     }
                 };
                 reader.readAsText(file);
